@@ -44,7 +44,9 @@ button{font:inherit;color:inherit}
 .link{background:none;border:0;color:var(--green);font-weight:600;padding:.4em 0;cursor:pointer}
 .top{display:flex;justify-content:space-between;align-items:center;min-height:40px}
 
-.hero{padding:1.2em 0 .6em;border-bottom:1.5px solid var(--line);margin-bottom:1em}
+.hero{padding:.6em 0 .8em;border-bottom:1.5px solid var(--line);margin-bottom:1em;text-align:center}
+.hero .brand{color:var(--green);font-size:2.3rem;font-weight:700;margin:0 0 .15em;line-height:1.05}
+[hidden]{display:none !important}
 .hero .idx{font-size:5.5rem;font-weight:700;line-height:.95;letter-spacing:-.01em}
 .banner{border:1.5px solid var(--flag);border-radius:10px;padding:.8em 1em;margin:1em 0}
 .banner .row{display:flex;gap:.6em}
@@ -252,7 +254,8 @@ function renderHome(status){
       <p class="muted small">Saved on this phone. It uploads automatically when you have signal.</p>
       <button class="btn" data-act="flush">Upload now</button></div>` : ''}
     <header class="hero">
-      <div class="idx num">${esc(idx)}</div>
+      <h1 class="brand">Zack’s Golf App</h1>
+      ${d && d.index != null ? `<div class="idx num">${esc(idx)}</div>` : ''}
       <p class="muted">${esc(note)}</p>
     </header>
     ${draft ? `<div class="banner"><strong>Round in progress</strong>
