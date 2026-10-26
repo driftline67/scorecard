@@ -460,7 +460,8 @@ function startRound(){
       fairway: null, gir: null, girManual: false, notes: '' })),
     card: { course: s.course.trim(), tees: s.teeName, rating: s.rating18, slope: s.slope, n: s.n,
       par: s.holes.map(h => h.par), yards: s.holes.map(h => h.yards), si: s.holes.map(h => h.si),
-      siLabel: s.siRows[s.siIdx].label }
+      siLabel: s.siRows[s.siIdx].label,
+      allTees: s.tees.map(t => ({ name: t.name || '', rating: num(t.rating), slope: num(t.slope), yards: t.yards || [] })) }
   };
   S.holeIdx = 0; saveDraft(); renderPlay(); show('play');
 }
@@ -561,8 +562,68 @@ function renderSummary(){
       <div><span class="num">${t.gir}/${t.n}</span><span class="muted small">Greens</span></div>
       <div><span class="num">${t.fwHit}/${t.fwCh}</span><span class="muted small">Fairways</span></div>
     </div>
+    ${detailsBlock(r)}
     <label class="field">Round notes<textarea data-note="round" placeholder="Conditions, what worked, what to practice">${esc(r.notes)}</textarea></label>
     <button class="btn primary big" data-act="save">Save to Google Sheet</button>`;
+}
+
+// ---------- Tees, rating and slope for a round
+function teeOptions(r){
+  const name = String(r.course || '').trim().toLowerCase(), out = [], seen = new Set();
+  for (const c of (S.data && S.data.courses) || []){
+    if (!c.card || String(c.name).trim().toLowerCase() !== name) continue;
+    const k = c.card;
+    const list = k.allTees && k.allTees.length ? k.allTees : [{ name: k.tees, rating: k.rating, slope: k.slope, yards: k.yards }];
+    for (const t of list){
+      const key = String(t.name || '').trim().toLowerCase();
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push({ name: t.name, rating: num(t.rating), slope: num(t.slope), yards: t.yards || [], n: k.n || 18 });
+    }
+  }
+  return out;
+}
+
+function detailsBlock(r){
+  const opts = teeOptions(r), cur = String(r.tees || '').trim().toLowerCase();
+  const picked = opts.findIndex(t => String(t.name).trim().toLowerCase() === cur);
+  return `<div class="block"><div class="lbl">Round details</div>
+    ${opts.length ? `<label class="field">Tees played<select data-sum="tee">
+        ${opts.map((t, i) => `<option value="${i}" ${i === picked ? 'selected' : ''}>${esc(t.name)}${t.rating ? ' (' + esc(t.rating) + ' / ' + esc(t.slope ?? '–') + ')' : ''}</option>`).join('')}
+        <option value="other" ${picked < 0 ? 'selected' : ''}>Other tees</option></select></label>` : ''}
+    <label class="field">Tee name<input data-sum="tees" value="${esc(r.tees || '')}" placeholder="White" autocomplete="off"></label>
+    <div class="grid2">
+      <label class="field">Course rating${r.holesPlayed === 18 ? '' : ' (9 holes)'}<input inputmode="decimal" data-sum="rating" value="${esc(r.rating ?? '')}"></label>
+      <label class="field">Slope<input inputmode="numeric" data-sum="slope" value="${esc(r.slope ?? '')}"></label>
+    </div>
+    <p class="${r.rating && r.slope ? 'muted' : 'error'} small">${r.rating && r.slope ? 'Rating and slope set this round\'s handicap differential.' : 'Add rating and slope so this round counts toward your handicap.'}</p>
+  </div>`;
+}
+
+function applyTee(r, t){
+  r.tees = t.name;
+  r.rating = r.holesPlayed === 18 || t.n === 9 ? t.rating : halfRating(t.rating);
+  r.slope = t.slope;
+  r.holes.forEach(h => { const y = num(t.yards[h.hole - 1]); if (y != null) h.yards = y; });
+}
+
+function summaryInput(el){
+  const r = S.round, k = el.dataset.sum;
+  if (k === 'tee'){
+    if (el.value !== 'other') applyTee(r, teeOptions(r)[Number(el.value)]);
+    saveDraft(); renderSummary(); return;
+  }
+  if (k === 'tees') r.tees = el.value.trim();
+  else r[k] = num(el.value);
+  saveDraft();
+}
+
+function loadForEdit(){
+  const v = S.viewing;
+  S.round = { id: v.id, date: v.date, course: v.course, tees: v.tees, holesPlayed: v.holesPlayed, rating: v.rating,
+    slope: v.slope, indexBefore: v.indexBefore, notes: v.notes, card: null,
+    holes: v.holes.map(h => Object.assign({}, h, { girManual: true })) };
+  S.holeIdx = 0; saveDraft();
 }
 
 function allocateStrokes(r){
@@ -621,7 +682,8 @@ function renderRound(){
     </tbody></table></div>
     ${v.notes ? `<h2>Round notes</h2><p>${esc(v.notes)}</p>` : ''}
     ${noted.length ? `<h2>Hole notes</h2>${noted.map(h => `<p><strong>Hole ${h.hole}:</strong> ${esc(h.notes)}</p>`).join('')}` : ''}
-    <button class="btn" data-act="edit-round">Edit this round</button>`;
+    <button class="btn" data-act="edit-round">Edit this round</button>
+    <button class="btn" data-act="edit-details">Change tees or rating</button>`;
 }
 
 // ---------- Events
@@ -649,13 +711,8 @@ const actions = {
   settings(){ renderSettings(false); show('settings'); },
   'cfg-save'(el){ saveSettings(el); },
   flush(){ if (!navigator.onLine) return toast('No signal right now.'); flushOutbox(); },
-  'edit-round'(){
-    const v = S.viewing;
-    S.round = { id: v.id, date: v.date, course: v.course, tees: v.tees, holesPlayed: v.holesPlayed, rating: v.rating,
-      slope: v.slope, indexBefore: v.indexBefore, notes: v.notes, card: null,
-      holes: v.holes.map(h => Object.assign({}, h, { girManual: true })) };
-    S.holeIdx = 0; saveDraft(); renderPlay(); show('play');
-  }
+  'edit-round'(){ loadForEdit(); renderPlay(); show('play'); },
+  'edit-details'(){ loadForEdit(); renderSummary(); show('summary'); }
 };
 
 document.addEventListener('click', e => {
@@ -668,11 +725,13 @@ document.addEventListener('input', e => {
   const el = e.target;
   if (el.dataset.note === 'hole' && S.round){ S.round.holes[S.holeIdx].notes = el.value; saveDraft(); }
   else if (el.dataset.note === 'round' && S.round){ S.round.notes = el.value; saveDraft(); }
+  else if (el.dataset.sum && el.tagName !== 'SELECT' && S.round) summaryInput(el);
   else if (S.setup && !$('#setup').hidden && (el.dataset.f || el.dataset.h != null) && el.tagName !== 'SELECT') setupInput(el);
 });
 document.addEventListener('change', e => {
   const el = e.target;
   if (el.id === 'photo' && el.files && el.files[0]) onPhoto(el.files[0]);
+  else if (el.dataset.sum && S.round) summaryInput(el);
   else if (el.tagName === 'SELECT' && S.setup) setupInput(el);
 });
 

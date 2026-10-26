@@ -1,5 +1,5 @@
 // Keeps the app working with no signal. Bump VERSION when you upload new files.
-const VERSION = 'scorecard-v3';
+const VERSION = 'scorecard-v4';
 const SHELL = ['./', 'index.html', 'manifest.json', 'icon-180.png', 'icon-512.png'];
 
 self.addEventListener('install', e => {
